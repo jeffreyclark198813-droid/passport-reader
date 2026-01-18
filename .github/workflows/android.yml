@@ -2,19 +2,70 @@ name: Android CI
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - "master"
   pull_request:
-    branches: [ master ]
+    branches:
+      - "master"
 
 jobs:
   build:
-
+    name: Build and Test Android App
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      JAVA_HOME: /opt/hostedtoolcache/jdk/11-linux-x64
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-    - run: ./gradlew :app:assembleRegularDebug
+      # Checkout source
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up JDK 11 with caching for Gradle
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: gradle
+
+      # Cache Gradle wrapper and dependencies separately for faster CI
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # Make Gradle wrapper executable
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # Run static analysis
+      - name: Run Lint
+        run: ./gradlew lint
+        continue-on-error: false
+
+      # Run unit tests
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+        continue-on-error: false
+
+      # Build APK / AAB
+      - name: Build App
+        run: ./gradlew assembleDebug
+
+      # Upload build artifacts
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      # Optional: check Gradle build scan (for advanced insights)
+      - name: Generate Gradle Build Scan
+        run: ./gradlew build --scan --no-daemon || true
